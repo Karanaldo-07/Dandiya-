@@ -80,7 +80,34 @@ async function renderMatches(p){
 }
 function score(a,b){let s=0;s+=(b.nights||[]).filter(n=>mineNight(a,n)).length*8;if(a.dance_type===b.dance_type)s+=22;else if(a.dance_type==="Both"||b.dance_type==="Both")s+=15;if(a.skill_level===b.skill_level)s+=18;else if(Math.abs(["Beginner","Intermediate","Advanced"].indexOf(a.skill_level)-["Beginner","Intermediate","Advanced"].indexOf(b.skill_level))===1)s+=9;if(a.tempo===b.tempo)s+=14;else if(a.tempo==="Medium"||b.tempo==="Medium")s+=7;if(a.area===b.area)s+=10;return Math.min(99,s)}
 function mineNight(a,n){return a._nights?a._nights.includes(n):selectedNights().includes(n)}
-async function likeProfile(id){const {data:{user}}=await db.auth.getUser();if(!user)return;const {error}=await db.from("likes").insert({liker_id:user.id,liked_id:id});if(error&&error.code!=="23505"){alert(error.message);return}alert("Like sent. If they like you back, a mutual match will be created.");}
+async function likeProfile(id){
+ const {data:{user}}=await db.auth.getUser();if(!user)return;
+ const {error}=await db.from("likes").insert({liker_id:user.id,liked_id:id});
+ if(error&&error.code!=="23505"){alert(error.message);return}
+ const {data:mutual}=await db.from("matches").select("id").or("user_a.eq."+user.id+",user_b.eq."+user.id);
+ const found=(mutual||[]).some(m=>m.id);
+ if(found) alert("Like sent. Check your Matches — a mutual match may now be available.");
+ else alert("Like sent. If they like you back, you will get a mutual match.");
+ await loadProfile();
+}
+async function loadMatches(){
+ const {data:{user}}=await db.auth.getUser();if(!user)return;
+ const {data:matches}=await db.from("matches").select("id,user_a,user_b,created_at").or("user_a.eq."+user.id+",user_b.eq."+user.id);
+ const box=document.getElementById("matchGrid");
+ if(!matches?.length)return;
+ const ids=matches.map(m=>m.user_a===user.id?m.user_b:m.user_a);
+ const {data:people}=await db.from("profiles").select("id,name,age,dance_type,area").in("id",ids);
+ const cards=(people||[]).map(p=>{const m=matches.find(x=>x.user_a===p.id||x.user_b===p.id);return '<article class="match-card"><div class="avatar">'+p.name[0].toUpperCase()+'</div><h3>'+escapeHtml(p.name)+', '+p.age+'</h3><div class="score">💚 Mutual match</div><div class="tags"><span class="tag">'+p.dance_type+'</span><span class="tag">'+p.area+'</span></div><button onclick="openChat(\''+m.id+'\',\''+escapeHtml(p.name)+'\')">Open chat</button></article>'}).join("");
+ box.innerHTML=cards+box.innerHTML;
+}
+async function openChat(matchId,name){
+ const body=prompt("Message "+name+" — keep the first meeting at a public event venue:");
+ if(!body?.trim())return;
+ const {data:{user}}=await db.auth.getUser();if(!user)return;
+ const {error}=await db.from("messages").insert({match_id:matchId,sender_id:user.id,body:body.trim()});
+ if(error){alert(error.message);return}
+ alert("Message sent.");
+}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 
 document.getElementById("resetBtn").addEventListener("click",()=>location.hash="profile");
